@@ -10,12 +10,13 @@ crate-type = ["cdylib"]
 lto = true
 opt-level = 3
 
-# [profile.dev]
-# lto = true
-# opt-level = 3
+[profile.dev]
+lto = true
+opt-level = 3
 
 [dependencies]
 rand = "0.8.5"
+rand_xoshiro = "0.6.0"
 getrandom = { version = "0.2", features = ["js"] }
 wasm-bindgen = "0.2.82"
 easybench-wasm = "0.2.1"

@@ -1,6 +1,8 @@
-use crate::consts::{PI, ANT_RADIUS, NEST_RADIUS};
+use crate::consts::{ANT_RADIUS, NEST_RADIUS, PI};
 use crate::Ant;
 use rand::prelude::*;
+use rand_xoshiro::rand_core::SeedableRng;
+use rand_xoshiro::Xoshiro256Plus;
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, Window};
 
@@ -43,13 +45,14 @@ pub fn get_canvas_dimensions_and_context(window: &Window) -> (f64, f64, CanvasRe
 }
 
 pub fn initialize_ants(width: f64, height: f64, ant_count: usize) -> Vec<Ant> {
-    let mut rng = rand::thread_rng();
+    let mut rng = Xoshiro256Plus::seed_from_u64(0);
 
     let mut ants = vec![
         Ant {
             x: width / 2.0,
             y: height / 2.0,
             dir: 0.0,
+            has_food: false
         };
         ant_count
     ];
