@@ -1,5 +1,4 @@
-use crate::consts::{ANT_RADIUS, NEST_RADIUS, PI};
-use crate::Ant;
+use crate::consts::PI;
 use rand::prelude::*;
 use rand_xoshiro::rand_core::SeedableRng;
 use rand_xoshiro::Xoshiro256Plus;
