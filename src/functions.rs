@@ -66,27 +66,17 @@ pub fn link_program(
     }
 }
 
-pub fn draw(context: &WebGl2RenderingContext, vert_count: i32) {
-    context.clear_color(0.0, 0.0, 0.0, 1.0);
-    context.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
-
-    context.draw_arrays(WebGl2RenderingContext::POINTS, 0, vert_count);
+pub fn clear(gl: &WebGl2RenderingContext) {
+    gl.clear_color(0.0, 0.0, 0.0, 1.0);
+    gl.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
 }
 
-// pub fn draw_nest(ctx: &CanvasRenderingContext2d, x: f64, y: f64) {
-//     ctx.begin_path();
-//     ctx.ellipse(x, y, NEST_RADIUS, NEST_RADIUS, 0.0, 0.0, 2.0 * PI)
-//         .expect("error drawing nest");
-//     ctx.fill();
-// }
-//
-// pub fn draw_ant(ctx: &CanvasRenderingContext2d, x: f32, y: f32) {
-//     ctx.fill_rect(
-//         x - ANT_RADIUS / 2.0,
-//         y - ANT_RADIUS / 2.0,
-//         ANT_RADIUS,
-//         ANT_RADIUS,
-//     );
+pub fn draw_points(gl: &WebGl2RenderingContext, vert_count: i32) {
+    gl.draw_arrays(WebGl2RenderingContext::POINTS, 0, vert_count);
+}
+
+// pub fn draw_triangles(gl: &WebGl2RenderingContext, vert_count: i32) {
+//     gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, vert_count);
 // }
 
 pub fn get_canvas_dimensions_and_context(window: &Window) -> (f32, f32, WebGl2RenderingContext) {

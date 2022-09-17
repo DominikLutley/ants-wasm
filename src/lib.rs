@@ -8,25 +8,41 @@ mod consts;
 // use easybench_wasm::bench;
 mod ants;
 use ants::*;
+mod nest;
+use nest::*;
+mod food;
+use food::*;
+use rand_xoshiro::rand_core::SeedableRng;
+use rand_xoshiro::Xoshiro256Plus;
 
 #[wasm_bindgen]
 pub fn run() -> Result<(), JsValue> {
     let window = window();
     let (width, height, gl) = get_canvas_dimensions_and_context(&window);
+    let mut rng = Xoshiro256Plus::seed_from_u64(0);
+
     // let mut pheromone_map: Vec<u8> = vec![0; (width * height) as usize];
     // console::log_1(&format!("Normal RNG: {}", bench(|| {
     //     // bench
     // })).into());
-    // console::log_1(&format!("ff8888{:02x}", 10).into());
+
+    // let memory_buffer = wasm_bindgen::memory()
+    //     .dyn_into::<js_sys::WebAssembly::Memory>()
+    //     .unwrap()
+    //     .buffer();
 
     let mut ant_renderer = AntRenderer::new(&gl, width, height).expect("Error initializing ant renderer");
+    let nest_renderer = NestRenderer::new(&gl, width, height).expect("Error initializing nest renderer");
+    let food_renderer = FoodRenderer::new(&gl, width, height).expect("Error initializing food renderer");
 
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
 
     *g.borrow_mut() = Some(Closure::new(move || {
-        ant_renderer.render(&gl);
-
+        clear(&gl);
+        ant_renderer.render(&gl, &mut rng);
+        nest_renderer.render(&gl);
+        food_renderer.render(&gl);
 
         // ctx.set_fill_style(&JsValue::from_str("#88f"));
         // draw_nest(&ctx, width / 2.0, height / 2.0);
