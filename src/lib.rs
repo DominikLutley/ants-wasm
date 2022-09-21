@@ -8,10 +8,8 @@ mod consts;
 // use easybench_wasm::bench;
 mod ants;
 use ants::*;
-mod nest;
-use nest::*;
-mod food;
-use food::*;
+mod grid;
+use grid::*;
 use rand_xoshiro::rand_core::SeedableRng;
 use rand_xoshiro::Xoshiro256Plus;
 
@@ -32,8 +30,7 @@ pub fn run() -> Result<(), JsValue> {
     //     .buffer();
 
     let mut ant_renderer = AntRenderer::new(&gl, width, height).expect("Error initializing ant renderer");
-    let nest_renderer = NestRenderer::new(&gl, width, height).expect("Error initializing nest renderer");
-    let food_renderer = FoodRenderer::new(&gl, width, height).expect("Error initializing food renderer");
+    let grid_renderer = GridRenderer::new(&gl, width, height).expect("Error initializing grid renderer");
 
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
@@ -41,8 +38,7 @@ pub fn run() -> Result<(), JsValue> {
     *g.borrow_mut() = Some(Closure::new(move || {
         clear(&gl);
         ant_renderer.render(&gl, &mut rng);
-        nest_renderer.render(&gl);
-        food_renderer.render(&gl);
+        grid_renderer.render(&gl);
 
         // ctx.set_fill_style(&JsValue::from_str("#88f"));
         // draw_nest(&ctx, width / 2.0, height / 2.0);

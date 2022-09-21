@@ -116,8 +116,6 @@ impl AntRenderer {
 
         let vertex_count = (ants.len() / 2) as i32;
 
-        gl.use_program(Some(&program));
-
         Ok(AntRenderer {
             ants,
             dirs,
