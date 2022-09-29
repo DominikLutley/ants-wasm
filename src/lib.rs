@@ -29,16 +29,16 @@ pub fn run() -> Result<(), JsValue> {
     //     .unwrap()
     //     .buffer();
 
-    let mut ant_renderer = AntRenderer::new(&gl, width, height).expect("Error initializing ant renderer");
     let grid_renderer = GridRenderer::new(&gl, width, height).expect("Error initializing grid renderer");
+    let mut ant_renderer = AntRenderer::new(&gl, width, height).expect("Error initializing ant renderer");
 
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
 
     *g.borrow_mut() = Some(Closure::new(move || {
         clear(&gl);
-        ant_renderer.render(&gl, &mut rng);
         grid_renderer.render(&gl);
+        ant_renderer.render(&gl, &mut rng, &grid_renderer);
 
         // ctx.set_fill_style(&JsValue::from_str("#88f"));
         // draw_nest(&ctx, width / 2.0, height / 2.0);

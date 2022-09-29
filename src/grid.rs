@@ -1,25 +1,34 @@
 use crate::{
     consts::{GRID_COLORS, GRID_SIZE},
-    functions::{compile_shader, draw_points, link_program},
+    functions::{compile_shader, draw_points, initialize_grid, link_program},
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use web_sys::{
-    console, WebGl2RenderingContext, WebGlBuffer, WebGlProgram, WebGlUniformLocation,
-    WebGlVertexArrayObject,
+    WebGl2RenderingContext, WebGlBuffer, WebGlProgram, WebGlUniformLocation, WebGlVertexArrayObject,
 };
+
+#[derive(PartialEq)]
+pub enum GridResource {
+    Blank,
+    Nest,
+    Food,
+    Wall,
+}
 
 pub struct GridRenderer {
     program: WebGlProgram,
+    grid: Vec<f32>,
+    nest_coords: (usize, usize),
     width: f32,
     height: f32,
     u_resolution_location: Option<WebGlUniformLocation>,
     u_grid_size_location: Option<WebGlUniformLocation>,
     u_colors_location: Option<WebGlUniformLocation>,
-    position_buffer: WebGlBuffer,
+    grid_buffer: WebGlBuffer,
     vao: WebGlVertexArrayObject,
     vertex_count: i32,
-    positions_array_buf_view: js_sys::Float32Array,
+    // grid_array_buf_view: js_sys::Float32Array,
 }
 
 impl GridRenderer {
@@ -29,7 +38,7 @@ impl GridRenderer {
             WebGl2RenderingContext::VERTEX_SHADER,
             r##"#version 300 es
 
-            in vec4 a_position;
+            in vec2 a_grid;
 
             uniform vec2 u_resolution;
             uniform float u_grid_size;
@@ -40,18 +49,19 @@ impl GridRenderer {
 
             void main() {
                 vec4 color;
-                if (abs(a_position.z - 1.0) < eps) {
+                if (abs(a_grid.x - 1.0) < eps) {
                     color = u_colors[1];
-                } else if (abs(a_position.z - 2.0) < eps) {
+                } else if (abs(a_grid.x - 2.0) < eps) {
                     color = u_colors[2];
-                } else if (abs(a_position.z - 3.0) < eps) {
+                } else if (abs(a_grid.x - 3.0) < eps) {
                     color = u_colors[3];
                 } else {
                     color = u_colors[0];
                 }
-                v_color = vec4(color.rgb * a_position.a, 1.0);
+                v_color = vec4(color.rgb * a_grid.y, 1.0);
 
-                vec2 pixel_space = u_grid_size * a_position.xy + vec2(u_grid_size / 2.0, u_grid_size / 2.0);
+                vec2 coords = vec2(gl_VertexID % 120, gl_VertexID / 120);
+                vec2 pixel_space = u_grid_size * coords + vec2(u_grid_size / 2.0, u_grid_size / 2.0);
                 vec2 clip_space = 2.0 * pixel_space / u_resolution - 1.0;
                 gl_Position = vec4(clip_space * vec2(1, -1), 0, 1);
 
@@ -79,83 +89,56 @@ impl GridRenderer {
         )
         .expect("Error creating fragment shader");
 
+        let nest_coords = (
+            (width / GRID_SIZE) as usize / 2,
+            (height / GRID_SIZE) as usize / 2,
+        );
+        let grid = initialize_grid(width, height, nest_coords);
+
         let program = link_program(&gl, &vertex_shader, &fragment_shader)?;
 
-        let a_position_location = gl.get_attrib_location(&program, "a_position");
+        let a_grid_location = gl.get_attrib_location(&program, "a_grid");
 
         let u_resolution_location = gl.get_uniform_location(&program, "u_resolution");
         let u_grid_size_location = gl.get_uniform_location(&program, "u_grid_size");
         let u_colors_location = gl.get_uniform_location(&program, "u_colors");
 
-        let center_point = (width / 2.0 / GRID_SIZE, height / 2.0 / GRID_SIZE);
-        let positions: Vec<f32> = vec![
-            center_point.0,
-            center_point.1,
-            1.0,
-            1.0,
-            center_point.0 - 1.0,
-            center_point.1,
-            1.0,
-            1.0,
-            center_point.0,
-            center_point.1 - 1.0,
-            1.0,
-            1.0,
-            center_point.0 - 1.0,
-            center_point.1 - 1.0,
-            1.0,
-            1.0,
-            10.0,
-            10.0,
-            2.0,
-            1.0
-        ];
-        let position_buffer = gl
-            .create_buffer()
-            .ok_or("Failed to create position buffer")?;
-        gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&position_buffer));
+        let grid_buffer = gl.create_buffer().ok_or("Failed to create grid buffer")?;
+        gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&grid_buffer));
 
-        let location: u32 = positions.as_ptr() as u32 / 4;
+        let location: u32 = grid.as_ptr() as u32 / 4;
+        let next_location = location + grid.len() as u32;
+
         let memory_buffer = wasm_bindgen::memory()
             .dyn_into::<js_sys::WebAssembly::Memory>()
             .unwrap()
             .buffer();
-        let positions_array_buf_view = js_sys::Float32Array::new(&memory_buffer)
-            .subarray(location, location + positions.len() as u32);
+
+        let grid_array_buf_view =
+            js_sys::Float32Array::new(&memory_buffer).subarray(location, next_location);
 
         gl.buffer_data_with_array_buffer_view(
             WebGl2RenderingContext::ARRAY_BUFFER,
-            &positions_array_buf_view,
+            &grid_array_buf_view,
             WebGl2RenderingContext::STATIC_DRAW,
         );
 
-        // vertex array
         let vao = gl
             .create_vertex_array()
             .ok_or("Could not create vertex array object")?;
         gl.bind_vertex_array(Some(&vao));
 
-        gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&position_buffer));
-        // gl.vertex_attrib_i_pointer_with_i32(
-        //     a_position_location as u32,
-        //     4,
-        //     WebGl2RenderingContext::UNSIGNED_SHORT,
-        //     0,
-        //     0,
-        // );
         gl.vertex_attrib_pointer_with_i32(
-            a_position_location as u32,
-            4,
+            a_grid_location as u32,
+            2,
             WebGl2RenderingContext::FLOAT,
             false,
             0,
             0,
         );
-        gl.enable_vertex_attrib_array(a_position_location as u32);
+        gl.enable_vertex_attrib_array(a_grid_location as u32);
 
-        let vertex_count = (positions.len() / 4) as i32;
-
-        gl.use_program(Some(&program));
+        let vertex_count = (grid.len() / 4) as i32;
 
         Ok(GridRenderer {
             program,
@@ -165,9 +148,11 @@ impl GridRenderer {
             u_colors_location,
             u_resolution_location,
             u_grid_size_location,
-            position_buffer,
+            grid_buffer,
             vertex_count,
-            positions_array_buf_view,
+            // grid_array_buf_view,
+            grid,
+            nest_coords,
         })
     }
 
@@ -181,15 +166,45 @@ impl GridRenderer {
 
         gl.bind_buffer(
             WebGl2RenderingContext::ARRAY_BUFFER,
-            Some(&self.position_buffer),
+            Some(&self.grid_buffer),
         );
 
         // gl.buffer_data_with_array_buffer_view(
         //     WebGl2RenderingContext::ARRAY_BUFFER,
-        //     &self.positions_array_buf_view,
+        //     &self.grid_array_buf_view,
         //     WebGl2RenderingContext::STATIC_DRAW,
         // );
 
         draw_points(&gl, self.vertex_count);
+    }
+
+    pub fn get_resource_at_position(&self, pos: (f32, f32)) -> GridResource {
+        if pos.0 < 0.0 || pos.1 < 0.0 || pos.0 > self.width || pos.1 > self.height {
+            return GridResource::Wall;
+        }
+        let idx = self.pos_to_idx(pos);
+        match self.grid[idx] as usize {
+            1 => GridResource::Nest,
+            2 => GridResource::Food,
+            3 => GridResource::Wall,
+            _ => GridResource::Blank,
+        }
+    }
+
+    pub fn pos_to_idx(&self, pos: (f32, f32)) -> usize {
+        (pos.1 as usize / GRID_SIZE as usize * self.width as usize / GRID_SIZE as usize
+            + pos.0 as usize / GRID_SIZE as usize)
+            * 2
+    }
+
+    pub fn coords_to_pos(&self, coords: (usize, usize)) -> (f32, f32) {
+        (coords.0 as f32 * GRID_SIZE, coords.1 as f32 * GRID_SIZE)
+    }
+
+    pub fn dir_to_nest(&self, pos: (f32, f32)) -> f32 {
+        let nest_pos = self.coords_to_pos(self.nest_coords);
+        let d_x = nest_pos.0 - pos.0;
+        let d_y = nest_pos.1 - pos.1;
+        d_y.atan2(d_x)
     }
 }

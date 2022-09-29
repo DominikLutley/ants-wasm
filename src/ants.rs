@@ -1,11 +1,15 @@
+use crate::{
+    consts::{ANT_COUNT, ANT_SIZE, NEST_HONING_STRENGTH, PI, WANDER_COEFFICIENT},
+    functions::{compile_shader, draw_points, initialize_ants, link_program, next_ant_position},
+    grid::{GridRenderer, GridResource},
+};
 use rand::prelude::*;
 use rand_xoshiro::Xoshiro256Plus;
-use wasm_bindgen::JsValue;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::JsValue;
 use web_sys::WebGlBuffer;
 use web_sys::WebGlVertexArrayObject;
 use web_sys::{WebGl2RenderingContext, WebGlProgram, WebGlUniformLocation};
-use crate::{functions::{compile_shader, link_program, initialize_ants, draw_points}, consts::{ANT_COUNT, WALK_SPEED, ANT_SIZE, WANDER_COEFFICIENT, PI}};
 
 // #[derive(Clone, Debug)]
 // pub struct Ant {
@@ -18,6 +22,7 @@ use crate::{functions::{compile_shader, link_program, initialize_ants, draw_poin
 pub struct AntRenderer {
     ants: Vec<f32>,
     dirs: Vec<f32>,
+    has_food: Vec<bool>,
     program: WebGlProgram,
     width: f32,
     height: f32,
@@ -35,8 +40,6 @@ pub struct AntRenderer {
 
 impl AntRenderer {
     pub fn new(gl: &WebGl2RenderingContext, width: f32, height: f32) -> Result<Self, JsValue> {
-        let (ants, dirs) = initialize_ants(width, height, ANT_COUNT);
-
         let vertex_shader = compile_shader(
             &gl,
             WebGl2RenderingContext::VERTEX_SHADER,
@@ -71,6 +74,8 @@ impl AntRenderer {
         )
         .expect("Error creating fragment shader");
 
+        let (ants, dirs, has_food) = initialize_ants(width, height, ANT_COUNT);
+
         let program = link_program(&gl, &vertex_shader, &fragment_shader)?;
 
         let a_position_location = gl.get_attrib_location(&program, "a_position");
@@ -90,8 +95,8 @@ impl AntRenderer {
             .unwrap()
             .buffer();
 
-        let positions_array_buf_view = js_sys::Float32Array::new(&memory_buffer)
-                .subarray(location, next_location);
+        let positions_array_buf_view =
+            js_sys::Float32Array::new(&memory_buffer).subarray(location, next_location);
 
         gl.buffer_data_with_array_buffer_view(
             WebGl2RenderingContext::ARRAY_BUFFER,
@@ -119,6 +124,7 @@ impl AntRenderer {
         Ok(AntRenderer {
             ants,
             dirs,
+            has_food,
             width,
             height,
             program,
@@ -131,11 +137,16 @@ impl AntRenderer {
             vertex_count,
             vao,
             next_location,
-            memory_buffer
+            memory_buffer,
         })
     }
 
-    pub fn render(&mut self, gl: &WebGl2RenderingContext, rng: &mut Xoshiro256Plus) {
+    pub fn render(
+        &mut self,
+        gl: &WebGl2RenderingContext,
+        rng: &mut Xoshiro256Plus,
+        grid_renderer: &GridRenderer,
+    ) {
         gl.use_program(Some(&self.program));
         gl.bind_vertex_array(Some(&self.vao));
 
@@ -143,29 +154,79 @@ impl AntRenderer {
         gl.uniform2f(self.u_resolution_location.as_ref(), self.width, self.height);
         gl.uniform1f(self.u_ant_size_location.as_ref(), ANT_SIZE);
 
-        gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&self.position_buffer));
+        gl.bind_buffer(
+            WebGl2RenderingContext::ARRAY_BUFFER,
+            Some(&self.position_buffer),
+        );
 
         gl.buffer_data_with_array_buffer_view(
             WebGl2RenderingContext::ARRAY_BUFFER,
             &self.positions_array_buf_view,
-            WebGl2RenderingContext::DYNAMIC_DRAW
+            WebGl2RenderingContext::DYNAMIC_DRAW,
         );
 
         draw_points(&gl, self.vertex_count);
 
         for idx in (0..self.ants.len()).step_by(2) {
-            let (part1, part2) = self.ants.split_at_mut(idx+1);
+            let (part1, part2) = self.ants.split_at_mut(idx + 1);
             let x = part1.last_mut().expect("Error indexing vector");
             let y = part2.first_mut().expect("Error indexing vector");
-            let dir = &mut self.dirs[idx/2];
-            *x += dir.cos() * WALK_SPEED;
-            *y += dir.sin() * WALK_SPEED;
-            if *x >= self.width - ANT_SIZE || *x <= 0.0 + ANT_SIZE {
-                *dir += (PI / 2.0 - *dir) * 2.0;
-            } else if *y >= self.height - ANT_SIZE || *y <= 0.0 + ANT_SIZE {
-                *dir += 2.0 * *dir;
+            let dir = &mut self.dirs[idx / 2];
+            if *dir >= PI {
+                *dir -= 2.0 * PI;
             }
-            *dir += (rng.gen::<f32>() - 0.5) * WANDER_COEFFICIENT;
+            if *dir < -1.0 * PI {
+                *dir += 2.0 * PI;
+            }
+            let mut next_dir = dir.clone();
+            if self.has_food[idx / 2] == true {
+                let dir_diff = grid_renderer.dir_to_nest((*x, *y)) - next_dir;
+                next_dir = next_dir + dir_diff * NEST_HONING_STRENGTH;
+            }
+            next_dir += (rng.gen::<f32>() - 0.5) * WANDER_COEFFICIENT;
+            let mut next_pos = (*x, *y);
+            for i in 0..4 {
+                next_dir = match i {
+                    0 => next_dir,
+                    1 => *dir - 2.0 * *dir,
+                    2 => *dir + (PI / 2.0 - *dir) * 2.0,
+                    _ => *dir + PI,
+                };
+                next_pos = next_ant_position((*x, *y), next_dir);
+                match grid_renderer.get_resource_at_position(next_pos) {
+                    GridResource::Blank => {
+                        break;
+                    }
+                    GridResource::Food => {
+                        if self.has_food[idx / 2] {
+                            break;
+                        }
+                        self.has_food[idx / 2] = true;
+                        next_dir = *dir + PI;
+                        next_pos = next_ant_position((*x, *y), next_dir);
+                        if grid_renderer.get_resource_at_position(next_pos) != GridResource::Blank {
+                            next_pos = next_ant_position((*x, *y), *dir);
+                            next_dir = *dir;
+                        }
+                        break;
+                    }
+                    GridResource::Nest => {
+                        self.has_food[idx / 2] = false;
+                        next_dir = *dir + PI;
+                        next_pos = next_ant_position((*x, *y), next_dir);
+                        if grid_renderer.get_resource_at_position(next_pos) != GridResource::Blank {
+                            next_pos = next_ant_position((*x, *y), *dir);
+                            next_dir = *dir;
+                        }
+                        break;
+                    }
+                    GridResource::Wall => {
+                        continue;
+                    }
+                }
+            }
+            (*x, *y) = next_pos;
+            *dir = next_dir;
         }
     }
 }

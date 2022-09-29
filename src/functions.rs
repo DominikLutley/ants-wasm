@@ -1,4 +1,4 @@
-use crate::consts::PI;
+use crate::consts::{GRID_SIZE, PI, WALK_SPEED};
 use rand::prelude::*;
 use rand_xoshiro::rand_core::SeedableRng;
 use rand_xoshiro::Xoshiro256Plus;
@@ -101,7 +101,11 @@ pub fn get_canvas_dimensions_and_context(window: &Window) -> (f32, f32, WebGl2Re
     (width, height, ctx)
 }
 
-pub fn initialize_ants(width: f32, height: f32, ant_count: usize) -> (Vec<f32>, Vec<f32>) {
+pub fn initialize_ants(
+    width: f32,
+    height: f32,
+    ant_count: usize,
+) -> (Vec<f32>, Vec<f32>, Vec<bool>) {
     let mut rng = Xoshiro256Plus::seed_from_u64(0);
 
     let mut ants = Vec::new();
@@ -115,5 +119,42 @@ pub fn initialize_ants(width: f32, height: f32, ant_count: usize) -> (Vec<f32>, 
         dirs.push(rng.gen::<f32>() * 2.0 * PI);
     }
 
-    (ants, dirs)
+    let has_food = vec![false; ant_count];
+
+    (ants, dirs, has_food)
+}
+
+pub fn initialize_grid(width: f32, height: f32, nest_coords: (usize, usize)) -> Vec<f32> {
+    // console::log_1(&JsValue::from(nest_location.1));
+    let mut grid = Vec::new();
+    let nest_coord_list = [
+        nest_coords,
+        (nest_coords.0, nest_coords.1 - 1),
+        (nest_coords.0 - 1, nest_coords.1),
+        (nest_coords.0 - 1, nest_coords.1 - 1),
+    ];
+    let wall_coord_list = [(50, 10), (50, 11), (50, 12)];
+    let food_coord_list = [(25, 25), (26, 25), (27, 25)];
+    for i in 0..((2.0 * width / GRID_SIZE * height / GRID_SIZE) as usize) {
+        let coords = (
+            i % (width / GRID_SIZE) as usize,
+            i / (width / GRID_SIZE) as usize,
+        );
+        let items = match coords {
+            p if nest_coord_list.contains(&p) => (1.0, 1.0),
+            p if food_coord_list.contains(&p) => (2.0, 1.0),
+            p if wall_coord_list.contains(&p) => (3.0, 1.0),
+            _ => (0.0, 0.0),
+        };
+        grid.push(items.0);
+        grid.push(items.1);
+    }
+    grid
+}
+
+pub fn next_ant_position(pos: (f32, f32), dir: f32) -> (f32, f32) {
+    (
+        pos.0 + dir.cos() * WALK_SPEED,
+        pos.1 + dir.sin() * WALK_SPEED,
+    )
 }
