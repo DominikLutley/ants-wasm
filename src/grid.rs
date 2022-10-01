@@ -120,7 +120,7 @@ impl GridRenderer {
         gl.buffer_data_with_array_buffer_view(
             WebGl2RenderingContext::ARRAY_BUFFER,
             &grid_array_buf_view,
-            WebGl2RenderingContext::STATIC_DRAW,
+            WebGl2RenderingContext::DYNAMIC_DRAW,
         );
 
         let vao = gl
@@ -138,7 +138,7 @@ impl GridRenderer {
         );
         gl.enable_vertex_attrib_array(a_grid_location as u32);
 
-        let vertex_count = (grid.len() / 4) as i32;
+        let vertex_count = (grid.len() / 2) as i32;
 
         Ok(GridRenderer {
             program,

@@ -16,6 +16,10 @@ pub fn request_animation_frame(f: &Closure<dyn FnMut()>) {
         .expect("should register `requestAnimationFrame` OK");
 }
 
+pub fn coords_to_pos(coords: (usize, usize)) -> (f32, f32) {
+    (coords.0 as f32 * GRID_SIZE, coords.1 as f32 * GRID_SIZE)
+}
+
 pub fn compile_shader(
     context: &WebGl2RenderingContext,
     shader_type: u32,

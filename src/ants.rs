@@ -1,13 +1,16 @@
 use crate::{
-    consts::{ANT_COUNT, ANT_SIZE, NEST_HONING_STRENGTH, PI, WANDER_COEFFICIENT},
+    consts::{
+        ANT_COLOR, ANT_COUNT, ANT_PHEROMONE_TIMER, ANT_SIZE, NEST_HONING_STRENGTH, PI,
+        WANDER_COEFFICIENT,
+    },
     functions::{compile_shader, draw_points, initialize_ants, link_program, next_ant_position},
-    grid::{GridRenderer, GridResource},
+    grid::{GridRenderer, GridResource}, pheromones::PheromoneRenderer,
 };
 use rand::prelude::*;
 use rand_xoshiro::Xoshiro256Plus;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
-use web_sys::WebGlBuffer;
+use web_sys::{WebGlBuffer, console};
 use web_sys::WebGlVertexArrayObject;
 use web_sys::{WebGl2RenderingContext, WebGlProgram, WebGlUniformLocation};
 
@@ -23,6 +26,7 @@ pub struct AntRenderer {
     ants: Vec<f32>,
     dirs: Vec<f32>,
     has_food: Vec<bool>,
+    pheromone_timer: usize,
     program: WebGlProgram,
     width: f32,
     height: f32,
@@ -34,8 +38,6 @@ pub struct AntRenderer {
     positions_array_buf_view: js_sys::Float32Array,
     vertex_count: i32,
     vao: WebGlVertexArrayObject,
-    pub next_location: u32,
-    pub memory_buffer: JsValue,
 }
 
 impl AntRenderer {
@@ -125,6 +127,7 @@ impl AntRenderer {
             ants,
             dirs,
             has_food,
+            pheromone_timer: ANT_PHEROMONE_TIMER,
             width,
             height,
             program,
@@ -136,8 +139,6 @@ impl AntRenderer {
             positions_array_buf_view,
             vertex_count,
             vao,
-            next_location,
-            memory_buffer,
         })
     }
 
@@ -146,11 +147,12 @@ impl AntRenderer {
         gl: &WebGl2RenderingContext,
         rng: &mut Xoshiro256Plus,
         grid_renderer: &GridRenderer,
+        pheromone_renderer: &mut PheromoneRenderer,
     ) {
         gl.use_program(Some(&self.program));
         gl.bind_vertex_array(Some(&self.vao));
 
-        gl.uniform4fv_with_f32_array(self.u_color_location.as_ref(), &[1.0, 1.0, 1.0, 1.0]);
+        gl.uniform4fv_with_f32_array(self.u_color_location.as_ref(), ANT_COLOR);
         gl.uniform2f(self.u_resolution_location.as_ref(), self.width, self.height);
         gl.uniform1f(self.u_ant_size_location.as_ref(), ANT_SIZE);
 
@@ -167,6 +169,8 @@ impl AntRenderer {
 
         draw_points(&gl, self.vertex_count);
 
+        self.pheromone_timer -= 1;
+
         for idx in (0..self.ants.len()).step_by(2) {
             let (part1, part2) = self.ants.split_at_mut(idx + 1);
             let x = part1.last_mut().expect("Error indexing vector");
@@ -182,6 +186,9 @@ impl AntRenderer {
             if self.has_food[idx / 2] == true {
                 let dir_diff = grid_renderer.dir_to_nest((*x, *y)) - next_dir;
                 next_dir = next_dir + dir_diff * NEST_HONING_STRENGTH;
+                if self.pheromone_timer == 0 {
+                    pheromone_renderer.add_pheromone((*x, *y));
+                }
             }
             next_dir += (rng.gen::<f32>() - 0.5) * WANDER_COEFFICIENT;
             let mut next_pos = (*x, *y);
@@ -227,6 +234,10 @@ impl AntRenderer {
             }
             (*x, *y) = next_pos;
             *dir = next_dir;
+        }
+        
+        if self.pheromone_timer <= 0 {
+            self.pheromone_timer = ANT_PHEROMONE_TIMER;
         }
     }
 }

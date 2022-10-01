@@ -1,15 +1,19 @@
 mod functions;
+use consts::GRID_SIZE;
 use functions::*;
+use pheromones::PheromoneRenderer;
+use web_sys::WebGl2RenderingContext;
 // use web_sys::console;
 use std::cell::RefCell;
 use std::rc::Rc;
-use wasm_bindgen::prelude::*;
+use wasm_bindgen::{prelude::*, JsCast};
 mod consts;
 // use easybench_wasm::bench;
 mod ants;
 use ants::*;
 mod grid;
 use grid::*;
+mod pheromones;
 use rand_xoshiro::rand_core::SeedableRng;
 use rand_xoshiro::Xoshiro256Plus;
 
@@ -29,8 +33,12 @@ pub fn run() -> Result<(), JsValue> {
     //     .unwrap()
     //     .buffer();
 
-    let grid_renderer = GridRenderer::new(&gl, width, height).expect("Error initializing grid renderer");
-    let mut ant_renderer = AntRenderer::new(&gl, width, height).expect("Error initializing ant renderer");
+    let grid_renderer = GridRenderer::new(&gl, width, height)
+        .expect("Error initializing grid renderer");
+    let mut ant_renderer =
+        AntRenderer::new(&gl, width, height).expect("Error initializing ant renderer");
+    let mut pheromone_renderer =
+        PheromoneRenderer::new(&gl, width, height).expect("Error initializing pheromone renderer");
 
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
@@ -38,22 +46,8 @@ pub fn run() -> Result<(), JsValue> {
     *g.borrow_mut() = Some(Closure::new(move || {
         clear(&gl);
         grid_renderer.render(&gl);
-        ant_renderer.render(&gl, &mut rng, &grid_renderer);
-
-        // ctx.set_fill_style(&JsValue::from_str("#88f"));
-        // draw_nest(&ctx, width / 2.0, height / 2.0);
-
-        // for idx in 0..pheromone_map.len() {
-        //     let intensity = pheromone_map[idx];
-        //     if intensity == 0 {
-        //         continue;
-        //     }
-        //     let x = idx % width as usize;
-        //     let y = idx / width as usize;
-        //     ctx.set_fill_style(&JsValue::from_str(&format!("#ff8888{:02x}", intensity)));
-        //     ctx.fill_rect(x as f64, y as f64, 1.0, 1.0);
-        //     pheromone_map[idx] -= 2;
-        // }
+        ant_renderer.render(&gl, &mut rng, &grid_renderer, &mut pheromone_renderer);
+        pheromone_renderer.render(&gl);
 
         request_animation_frame(f.borrow().as_ref().unwrap());
     }));
