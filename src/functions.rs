@@ -1,10 +1,13 @@
-use crate::consts::{GRID_SIZE, PI, WALK_SPEED};
+use crate::{
+    consts::{GRID_SIZE, PI, WALK_SPEED},
+    grid::GridResource,
+};
 use rand::prelude::*;
 use rand_xoshiro::rand_core::SeedableRng;
 use rand_xoshiro::Xoshiro256Plus;
-use wasm_bindgen::prelude::Closure;
+use wasm_bindgen::{prelude::Closure, JsValue};
 use wasm_bindgen::JsCast;
-use web_sys::{WebGl2RenderingContext, WebGlProgram, WebGlShader, Window};
+use web_sys::{WebGl2RenderingContext, WebGlProgram, WebGlShader, Window, console};
 
 pub fn window() -> Window {
     web_sys::window().expect("no global `window` exists")
@@ -16,10 +19,48 @@ pub fn request_animation_frame(f: &Closure<dyn FnMut()>) {
         .expect("should register `requestAnimationFrame` OK");
 }
 
+pub fn calc_dir(pos1: (f32, f32), pos2: (f32, f32)) -> f32 {
+    let d_x = pos2.0 - pos1.0;
+    let d_y = pos2.1 - pos1.1;
+    d_y.atan2(d_x)
+}
+
+pub fn calc_dist(pos1: (f32, f32), pos2: (f32, f32)) -> f32 {
+    ((pos2.0 - pos1.0).powi(2) + (pos2.1 - pos1.1).powi(2)).sqrt()
+}
+
 pub fn coords_to_pos(coords: (usize, usize)) -> (f32, f32) {
     (coords.0 as f32 * GRID_SIZE, coords.1 as f32 * GRID_SIZE)
 }
 
+pub fn dir_to_nest(pos: (f32, f32), nest_coords: (usize, usize)) -> f32 {
+    let nest_pos = coords_to_pos(nest_coords);
+    calc_dir(pos, nest_pos)
+}
+
+pub fn pos_to_idx(pos: (f32, f32), width: f32) -> usize {
+    (pos.1 as usize / GRID_SIZE as usize * width as usize / GRID_SIZE as usize
+        + pos.0 as usize / GRID_SIZE as usize)
+        * 2
+}
+
+pub fn get_resource_at_position(
+    grid: &Vec<f32>,
+    width: f32,
+    height: f32,
+    pos: (f32, f32),
+) -> GridResource {
+    if pos.0 < 0.0 || pos.1 < 0.0 || pos.0 > width || pos.1 > height {
+        return GridResource::Wall;
+    }
+    let idx = pos_to_idx(pos, width);
+    match grid[idx] as usize {
+        1 => GridResource::Nest,
+        2 => GridResource::Food,
+        3 => GridResource::Wall,
+        _ => GridResource::Blank,
+    }
+}
 pub fn compile_shader(
     context: &WebGl2RenderingContext,
     shader_type: u32,
@@ -44,6 +85,20 @@ pub fn compile_shader(
     }
 }
 
+pub fn add_pheromone(pheromones: &mut Vec<f32>, pheromone_dirs: &mut Vec<f32>, pos: (f32, f32), dir: f32) {
+    let result = pheromones.iter().step_by(3).position(|&x| x <= 0.0);
+    match result {
+        Some(idx) => {
+            pheromones[idx * 3] = pos.0;
+            pheromones[idx * 3 + 1] = pos.1;
+            pheromones[idx * 3 + 2] = 1.0;
+            pheromone_dirs[idx / 3] = dir;
+        }
+        None => {
+            console::log_1(&JsValue::from("Not enough pheromones"));
+        },
+    }
+}
 pub fn link_program(
     context: &WebGl2RenderingContext,
     vert_shader: &WebGlShader,
